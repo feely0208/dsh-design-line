@@ -1,0 +1,64 @@
+{
+  "name": "@deepwhale-cn/dsh-design-line",
+  "version": "0.1.1",
+  "description": "深鲸工序：给设计师的工序流水线（PS 出图交付 / AutoCAD 出图标准化 / 3ds Max 批渲染交付）——一个包 = 一份内核 + 三个适配器",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "design",
+    "photoshop",
+    "autocad",
+    "3dsmax",
+    "workflow",
+    "工序",
+    "设计师"
+  ],
+  "files": [
+    "lib",
+    "bin",
+    "skill",
+    "内核",
+    "适配器",
+    "流水线",
+    "回执模块",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json",
+    "./client": "./lib/client.js"
+  },
+  "bin": {
+    "dsh-design-line": "./bin/cli.mjs"
+  },
+  "engines": {
+    "dsh": ">=0.1.0-rc.6",
+    "node": ">=18"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime"
+      ],
+      "platform": "web",
+      "immediately": true
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-skill": "*"
+  },
+  "homepage": "https://www.deepwhale.org.cn/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/feely0208/dsh-design-line.git"
+  }
+}
