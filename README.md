@@ -1,7 +1,10 @@
 # 深鲸工序 · DSH 插件
 
+[![Listed on DSH Plugin Hub](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/zh/plugins/feely0208/dsh-design-line)
+
 > 给设计师做的**工序流水线**：把一条完整的活一口气跑完 —— 不是零散小操作。
-> 一个包 = **一份内核 + 三个适配器**（Photoshop / AutoCAD / 3ds Max）。
+> 一个包 = **一份内核 + 四个适配器**（Photoshop / AutoCAD / 3ds Max / Blender）。
+> 它同时是个**框架**：写一个适配器就能接入新软件，内核一行不用改。
 
 装完在深鲸桌面里多出：「深鲸工序」面板 + `design-line` 技能 + `/工序` 命令。
 
