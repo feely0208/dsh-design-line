@@ -1,7 +1,7 @@
 {
   "name": "@deepwhale-cn/dsh-design-line",
-  "version": "0.1.1",
-  "description": "深鲸工序：给设计师的工序流水线（PS 出图交付 / AutoCAD 出图标准化 / 3ds Max 批渲染交付）——一个包 = 一份内核 + 三个适配器",
+  "version": "0.1.3",
+  "description": "深鲸工序 · 设计插件线：PS / AutoCAD / 3ds Max / Blender 四条完整工序流水线（意图→工序→落盘审阅→执行→校验→回执），也是框架 —— 写一个适配器就能接入新软件",
   "type": "module",
   "license": "MIT",
   "keywords": [
@@ -26,7 +26,9 @@
     "回执模块",
     "cordis.patch.yml",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "契约",
+    "模板"
   ],
   "main": "./lib/index.js",
   "exports": {
@@ -38,7 +40,7 @@
     "dsh-design-line": "./bin/cli.mjs"
   },
   "engines": {
-    "dsh": ">=0.1.0-rc.6",
+    "dsh": ">=0.1.0-rc.6 <0.3.0",
     "node": ">=18"
   },
   "dsh": {

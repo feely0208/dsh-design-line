@@ -11,7 +11,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { runChecks, writeCsv, glob } from "./verify.mjs";
 import { 新建回执, 记步骤, 采产物, 收尾, 落盘 } from "./回执.mjs";
 import { 等文件, 转行尾 } from "./平台.mjs";
@@ -33,10 +33,41 @@ function 记日志(运行目录, 事件) {
   fs.appendFileSync(f, JSON.stringify({ 时间: 时间(), ...事件 }) + "\n", "utf8");
 }
 
-async function 载适配器(软件) {
-  const f = path.join(适配器目录, 软件 + ".mjs");
-  if (!fs.existsSync(f)) throw new Error("没有适配器：" + 软件);
-  return (await import(f)).default;
+/**
+ * 外接适配器目录 —— **这是我们"是框架"的第一条兑现**。
+ * 别人想接入一个新软件（SketchUp / Rhino / 某个内部工具链），
+ * 只要往自己的目录里放一个 <软件名>.mjs（实现 探测/编译/发射/静态校验），
+ * 用 `--适配器目录 <目录>` 或环境变量 `设计插件_适配器目录`（多个用 : 分隔）指过来即可，**不用改内核一行**。
+ * 查找顺序：内置适配器 → 外接目录（按声明顺序，先命中先用）。
+ */
+function 外接适配器目录() {
+  const 出 = [];
+  const av = process.argv.slice(2);
+  for (let i = 0; i < av.length; i++) if (av[i] === "--适配器目录" && av[i + 1]) 出.push(path.resolve(av[i + 1]));
+  const 环境 = process.env.设计插件_适配器目录 || process.env.DESIGNLINE_ADAPTER_DIRS || "";
+  for (const d of 环境.split(/[:;]/).map((x) => x.trim()).filter(Boolean)) 出.push(path.resolve(d));
+  return 出;
+}
+
+async function 载适配器(软件, 计划里的目录) {
+  const 找过 = [];
+  const 候选 = [适配器目录, ...(计划里的目录 || []), ...外接适配器目录()];
+  for (const 目录 of 候选) {
+    const f = path.join(目录, 软件 + ".mjs");
+    找过.push(f);
+    if (fs.existsSync(f)) {
+      // ⚠️ 必须转成 file:// URL 再 import：Windows 上 import('C:\\...') 会被当成
+      //    协议 c: → "Only URLs with a scheme in: file, data, node, and electron are supported…
+      //    Received protocol 'c:'"。POSIX 绝对路径恰好能解析，所以本机（mac）测不出来。
+      const m = await import(pathToFileURL(f).href);
+      const a = m.default || m;
+      if (!a || typeof a !== "object") throw new Error("适配器格式不对（要 export default {id, 名称, 探测, 编译, 发射, 静态校验}）：" + f);
+      if (!a.id) a.id = 软件;
+      a.内部路径 = f;                       // 便于日志里说清"这条线是从哪加载的"
+      return a;
+    }
+  }
+  throw new Error("没有适配器：" + 软件 + "（找过：" + 找过.join(" ｜ ") + "）");
 }
 
 /* ============ plan：落盘可审阅（不执行） ============ */
@@ -73,6 +104,9 @@ async function plan(流水线路径, 意图路径, 运行目录, 适配器覆盖
     步骤: 流水线.步骤,
     探测,
     单元,
+    // ⭐ 外接适配器的出处也要落盘：否则 plan 找得到、run 找不到（真踩过）
+    适配器目录: 外接适配器目录(),
+    适配器来源: 适配器.内部路径 || null,
   };
   写JSON(path.join(运行目录, "意图.json"), 意图);
   写JSON(path.join(运行目录, "计划.json"), 计划);
@@ -98,7 +132,7 @@ async function run(运行目录, 选项 = {}) {
   const 计划路径 = path.join(运行目录, "计划.json");
   if (!fs.existsSync(计划路径)) throw new Error("没找到 计划.json —— 先 plan（执行前必须先落盘可审阅）");
   const 计划 = 读JSON(计划路径);
-  const 适配器 = await 载适配器(计划.流水线.软件);
+  const 适配器 = await 载适配器(计划.流水线.软件, 计划.适配器目录);
   const 探测 = 适配器.探测 ? 适配器.探测({ 运行目录, 意图: 计划.意图, 流水线: 计划.流水线, 步骤: 计划.步骤 }) : 计划.探测;
 
   // 跑之前先看盘：产物可能很大，写满用户的盘就是「搞坏环境」
@@ -163,8 +197,28 @@ async function run(运行目录, 选项 = {}) {
     // ⭐ 「等脚本跑完」放在内核里做（轮询一个标记文件），不依赖 bash 循环 —— Windows 上没有 bash。
     //    发射命令只负责「把脚本投递给宿主」，完成与否一律看标记/or产物。
     if (发射.等待文件) {
-      等待结果 = 等文件(发射.等待文件, 超时);
-      if (等待结果 !== null) 记日志(运行目录, { 事件: "wait", 单元: j.单元ID, 标记: 发射.等待文件, 内容: String(等待结果).slice(0, 200) });
+      // ⚠️ 2026-10-16 踩：进程已经失败退出时，**不该再空等标记**。
+      //    当时 Blender 因脚本语法错误秒退，内核却照等 2 小时（超时值），白占一晚上。
+      //    规则：进程非 0 退出且没有标记 → 直接判失败；进程 0 退出但标记还没出现 → 才等（宿主可能延迟落标记）。
+      const 进程正常退出 = r.status === 0;
+      const 标记已存在 = fs.existsSync(发射.等待文件);
+      // ⚠️ 2026-10-16 第二个教训：宿主分两类，等待策略必须不同 ——
+      //   ① 进程即工作（Blender / 3dsmaxbatch / accoreconsole）：进程退出 = 活干完了，
+      //      标记此刻就该在；没在就只再等一小段宽限，**绝不能按超时值傻等**（那天白等过 2 小时）。
+      //   ② 投递完就返回（Photoshop 的 open -g -a）：进程秒退，但宿主还在后台干活，
+      //      必须按超时值等标记。适配器用 `进程即工作: false` 声明这一类。
+      const 进程即工作 = 发射.进程即工作 !== false;
+      const 宽限毫秒 = 进程即工作 ? Math.min(超时, 20000) : 超时;
+      if (!进程正常退出 && !标记已存在) {
+        等待结果 = null;
+        记日志(运行目录, { 事件: "wait", 单元: j.单元ID, 标记: 发射.等待文件,
+          内容: "进程已退出（状态码 " + r.status + "）且无标记 —— 不再空等，直接判失败" });
+      } else {
+        if (进程即工作) 记日志(运行目录, { 事件: "wait", 单元: j.单元ID,
+          内容: "进程已结束（状态码 " + r.status + "），标记未出现 → 只等 20 秒宽限（进程即工作型宿主）" });
+        等待结果 = 等文件(发射.等待文件, 宽限毫秒);
+      }
+          if (等待结果 !== null) 记日志(运行目录, { 事件: "wait", 单元: j.单元ID, 标记: 发射.等待文件, 内容: String(等待结果).slice(0, 200) });
     }
     const 耗时 = Date.now() - t0;
     const 输出 = {
@@ -364,9 +418,15 @@ function status(运行目录) {
   if (fs.existsSync(清单)) { console.log("\n交付清单.csv："); console.log(fs.readFileSync(清单, "utf8").trim()); }
 }
 
-async function detect(软件) {
-  const 适配器 = await 载适配器(软件);
-  const r = 适配器.探测 ? 适配器.探测({ 运行目录: "/tmp", 意图: {}, 流水线: {}, 步骤: [] }) : {};
+/**
+ * 探测宿主。
+ * 默认**被动**（只看磁盘，零副作用）；`--深` 才真投递探针 ——
+ * 因为「深」会启动宿主软件（Photoshop 会被打开），绝不能由界面自动触发。
+ */
+async function detect(软件, 深 = false) {
+  const 适配器 = await 载适配器(软件, []);
+  const fn = 深 && 适配器.探测通道 ? 适配器.探测通道 : 适配器.探测;
+  const r = fn ? fn({ 运行目录: "/tmp", 意图: {}, 流水线: {}, 步骤: [] }) : {};
   console.log(JSON.stringify({ 适配器: 适配器.id, 名称: 适配器.名称, ...r }, null, 2));
   return r;
 }
@@ -382,9 +442,9 @@ try {
   else if (cmd === "replay") await run(av[0], { 重跑: true });
   else if (cmd === "status") status(av[0]);
   else if (cmd === "doc") process.stdout.write(doc(av[0]));
-  else if (cmd === "detect") await detect(av[0]);
+  else if (cmd === "detect") await detect(av[0], av.includes("--深"));
   else {
-    console.log("用法：\n  run.mjs detect <软件>\n  run.mjs plan <流水线.json> --intent <意图.json> --out <运行目录>\n  run.mjs run <运行目录> [--步骤 S1,S3] [--重跑]\n  run.mjs replay <运行目录>\n  run.mjs status <运行目录>\n  run.mjs doc <流水线.json>");
+    console.log("用法：\n  run.mjs detect <软件> [--深]（--深 会真的启动宿主软件一次，默认不启动）\n  run.mjs plan <流水线.json> --intent <意图.json> --out <运行目录>\n  run.mjs run <运行目录> [--步骤 S1,S3] [--重跑]\n  run.mjs replay <运行目录>\n  run.mjs status <运行目录>\n  run.mjs doc <流水线.json>");
     process.exit(1);
   }
 } catch (e) {
