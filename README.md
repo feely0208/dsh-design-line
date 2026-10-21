@@ -1,5 +1,7 @@
 # 深鲸工序 · DSH 插件
 
+[![dshfind 收录](https://dshfind.com/api/badge/feely0208/dsh-design-line?lang=zh)](https://dshfind.com/zh/plugins/feely0208/dsh-design-line)
+
 [![Listed on DSH Plugin Hub](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/zh/plugins/feely0208/dsh-design-line)
 
 > 给设计师做的**工序流水线**：把一条完整的活一口气跑完 —— 不是零散小操作。
