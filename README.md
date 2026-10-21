@@ -74,3 +74,7 @@ bin/cli.mjs 命令行入口（不装 DSH 也能直接用）
 ## 许可
 
 MIT © 温州深鲸智能科技有限公司
+
+---
+
+<p align="right"><a href="https://deepwhale.org.cn"><img src="https://www.deepwhale.org.cn/images/badge/deepwhale-badge.png" alt="powered by dwh" height="20"></a></p>
